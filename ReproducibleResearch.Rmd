@@ -1,0 +1,115 @@
+---
+title: "Reproducible research Project 2"
+author: "Manas Polavarapu"
+date: "6/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#load in required libraries
+library(plyr)
+library(dplyr)
+library(ggplot2)
+```
+```{r}
+## downloading the file
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "stormdata.csv.bz2")
+
+## reading in the data
+strmdata <- read.csv(bzfile("stormdata.csv.bz2"))
+strm <- strmdata[c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+str(strm)
+```
+```{r}
+#Next step clean the data
+strm$PROPDMGEXP <- mapvalues(strm$PROPDMGEXP, from = c("K", "M","", "B", "m", "+", "0", "5", "6", "?", "4", "2", "3", "h", "7", "H", "-", "1", "8"), to = c(10^3, 10^6, 1, 10^9, 10^6, 0,1,10^5, 10^6, 0, 10^4, 10^2, 10^3, 10^2, 10^7, 10^2, 0, 10, 10^8))
+strm$PROPDMGEXP <- as.numeric(as.character(strm$PROPDMGEXP))
+strm$PROPDMGTOTAL <- (strm$PROPDMG * strm$PROPDMGEXP)/1000000000
+strm$CROPDMGEXP <- mapvalues(strm$CROPDMGEXP, from = c("","M", "K", "m", "B", "?", "0", "k","2"), to = c(1,10^6, 10^3, 10^6, 10^9, 0, 1, 10^3, 10^2))
+strm$CROPDMGEXP <- as.numeric(as.character(strm$CROPDMGEXP))
+strm$CROPDMGTOTAL <- (strm$CROPDMG * strm$CROPDMGEXP)/1000000000
+
+strm$DAMAGETOTAL <- strm$PROPDMGTOTAL + strm$CROPDMGTOTAL
+detach(package:plyr)
+strm_type <- strm %>%
+  mutate(evtypegrp = 
+   ifelse(grepl("LIGHTNING|LIGNTNING", EVTYPE), "LIGHTNING",
+    ifelse(grepl("HAIL", EVTYPE), "HAIL",
+     ifelse(grepl("RAIN|FLOOD|WET|FLD", EVTYPE), "RAIN",
+      ifelse(grepl("SNOW|WINTER|WINTRY|BLIZZARD|SLEET|COLD|ICE|FREEZE|AVALANCHE|ICY", EVTYPE), "WINTER",
+       ifelse(grepl("TORNADO|FUNNEL", EVTYPE), "TORNADO",
+        ifelse(grepl("WIND|HURRICANE", EVTYPE), "WINDS",
+         ifelse(grepl("STORM|THUNDER|TSTM|TROPICAL +STORM", EVTYPE), "STORM",
+          ifelse(grepl("FIRE", EVTYPE), "FIRE",
+           ifelse(grepl("FOG|VISIBILITY|DARK|DUST", EVTYPE), "FOG",
+            ifelse(grepl("WAVE|SURF|SURGE|TIDE|TSUNAMI|CURRENT|SWELL", EVTYPE), "WAVE",
+             ifelse(grepl("HEAT|HIGH +TEMP|RECORD +TEMP|WARM|DRY", EVTYPE), "HEAT",
+              ifelse(grepl("VOLCAN", EVTYPE), "VOLCANO",
+               ifelse(grepl("DROUGHT", EVTYPE), "DROUGHT",
+               "OTHER")))))))))))))
+
+  )
+
+```
+```{r}
+sum<-strm_type %>%
+  group_by(evtypegrp)%>%
+  summarize(damage=sum(DAMAGETOTAL), property=sum(PROPDMGTOTAL), crops=sum(CROPDMGTOTAL), fatallities=sum(FATALITIES), injuries=sum(INJURIES))
+```
+```{r}
+fatallities<-head(sum[order(sum$fatallities, decreasing=TRUE),],10)
+injuries<-head(sum[order(sum$injuries, decreasing=TRUE),],10)
+
+
+ggplot(fatallities, aes(evtypegrp,fatallities, fill=fatallities))+
+  geom_bar(stat = "identity")+
+  xlab("Event Type")+ ylab("Number of Fatalities")+
+  ggtitle("Total Fatalities By Event Type")+
+  theme(axis.text.x = element_text(angle=90)) +
+  expand_limits(y=c(0,6000))
+```
+```{r}
+#As we can see here the amount of fatalities that were the most was tornadoes
+```
+```{r}
+#Next we will look at what causes the most injuries
+ggplot(injuries, aes(evtypegrp,injuries, fill=injuries))+
+  geom_bar(stat = "identity")+
+  xlab("Event Type")+ ylab("Number of Injuries")+
+  ggtitle("Total Injuries By Event Type")+
+  theme(axis.text.x = element_text(angle=90)) +
+  expand_limits(y=c(0,6000))
+
+```
+```{r}
+# As we can see above the most injuries are caused by tornado
+```
+```{r}
+#THe most economically harmful
+damge <-head(sum[order(sum$damage, decreasing=TRUE),],10)
+property <- damge %>% mutate(damage_type="Property", damage_amount=property)
+crops <- damge %>% mutate(damage_type="Crops", damage_amount=crops)
+damge_10 <- rbind(property,crops)
+
+ggplot(damge_10, aes(evtypegrp, damage_amount, fill=factor(damage_type))) +
+  geom_bar(stat = "identity") + 
+  ylab("Economical damage 1950 - 2011") +
+  xlab("Event") +
+  scale_fill_discrete(name = "Damage") +
+  ggtitle ("Total Economical Damage by Event") +
+  theme(axis.text=element_text(size=6))
+```
+```{r}
+#As we can see by the graph above, the most propery and crop damage was caused by the rainstorm
+```
+
